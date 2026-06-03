@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebKit Thai Text Alignment Bug Test</title>
+    <style>
+        body {
+            background-color: #9b9b9b;
+            color: #ffffff;
+            font-family: sans-serif;
+            padding: 10px;
+            margin: 0;
+            /* 強制禁止全域水平滾動 */
+            overflow-x: hidden; 
+            box-sizing: border-box;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .canvas-section {
+            margin-top: 15px;
+            background-color: #333333;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            width: 100%;
+        }
+        .canvas-title {
+            font-size: 13px;
+            color: #ccc;
+            margin-bottom: 5px;
+            text-align: left;
+            font-weight: bold;
+            word-break: break-all;
+        }
+        canvas {
+            background-color: #222222;
+            display: block;
+            width: 100%; /* 讓 Canvas 寬度自適應父容器 */
+            height: 80px;
+        }
+        .log-box {
+            background-color: #111111;
+            color: #00ff00;
+            padding: 12px;
+            text-align: left;
+            font-family: monospace;
+            border-radius: 5px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-size: 11px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="font-size: 20px; margin: 10px 0 5px 0;">Thai Text Alignment Test</h2>
+    <p style="font-size: 12px; color: #eee; margin: 0 0 15px 0;">Comparing Left, Center, and Right alignment in Canvas 2D</p>
+    
+    <div class="canvas-section">
+        <div id="titleLeft" class="canvas-title">1. textAlign = "left"</div>
+        <canvas id="canvasLeft" height="80"></canvas>
+    </div>
+
+    <div class="canvas-section">
+        <div id="titleCenter" class="canvas-title">2. textAlign = "center"</div>
+        <canvas id="canvasCenter" height="80"></canvas>
+    </div>
+
+    <div class="canvas-section">
+        <div id="titleRight" class="canvas-title">3. textAlign = "right"</div>
+        <canvas id="canvasRight" height="80"></canvas>
+    </div>
+    
+    <div class="log-box" id="logBox">Detecting WebKit Metrics...</div>
+</div>
+
+<script>
+    window.addEventListener('load', () => {
+        const thaiText = "นี่คือข้อความตัวอย่าง";
+        const fontSize = 30; // 適度縮小字體以相容小螢幕手機
+        const fontStyle = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        
+        const logBox = document.getElementById('logBox');
+        let measuredWidth = 0;
+        let boundingBoxWidth = 0;
+
+        // 核心修正：動態計算當前畫布容器的實際像素寬度
+        const containerWidth = document.getElementById('canvasLeft').clientWidth;
+        const dpr = window.devicePixelRatio || 1;
+
+        function initCanvas(canvasId, alignType) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // 根據螢幕尺寸調整 Canvas 實際解析度，防止模糊
+            canvas.width = containerWidth * dpr;
+            canvas.height = 80 * dpr;
+            ctx.scale(dpr, dpr);
+
+            // 根據動態寬度計算對齊基準點 (Anchor X)
+            let anchorX = 0;
+            if (alignType === 'left') anchorX = 30;
+            else if (alignType === 'center') anchorX = containerWidth / 2;
+            else if (alignType === 'right') anchorX = containerWidth - 30;
+
+            // 更新標題顯示當前的 Anchor 座標
+            document.getElementById(`title${alignType.charAt(0).toUpperCase() + alignType.slice(1)}`).innerText = 
+                `${alignType === 'left' ? '1' : alignType === 'center' ? '2' : '3'}. textAlign = "${alignType}" (Anchor at X=${Math.round(anchorX)})`;
+
+            // 繪製紅色對齊基準線
+            ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(anchorX, 0);
+            ctx.lineTo(anchorX, 80);
+            ctx.stroke();
+
+            // 設定文字屬性
+            ctx.font = fontStyle;
+            ctx.fillStyle = "#ffffff";
+            ctx.textBaseline = "middle";
+            ctx.textAlign = alignType;
+
+            // 量測數據
+            if (alignType === 'left') {
+                const metrics = ctx.measureText(thaiText);
+                measuredWidth = metrics.width;
+                if (metrics.actualBoundingBoxRight) {
+                    boundingBoxWidth = metrics.actualBoundingBoxRight - metrics.actualBoundingBoxLeft;
+                }
+            }
+
+            // 繪製文字
+            ctx.fillText(thaiText, anchorX, 40);
+        }
+
+        // 初始化三個自適應畫布
+        initCanvas('canvasLeft', 'left');
+        initCanvas('canvasCenter', 'center');
+        initCanvas('canvasRight', 'right');
+
+        // 輸出測試數據
+        let logContent = `[User Agent]\n${navigator.userAgent}\n\n`;
+        logContent += `[Canvas Render Width]: ${containerWidth} px\n`;
+        logContent += `[Test String]: ${thaiText}\n`;
+        logContent += `[Font Config]: ${fontStyle}\n`;
+        logContent += `[Measured Width]: ${measuredWidth.toFixed(2)} px\n`;
+        logContent += `[BoundingBox Width]: ${boundingBoxWidth.toFixed(2)} px\n\n`;
+        logContent += `💡 TEST GUIDE (iOS 26.5):\n`;
+        logContent += `Check if Box 2 (center) or Box 3 (right) shows shorter text or truncation compared to Box 1 (left).`;
+
+        logBox.innerText = logContent;
+    });
+</script>
+
+</body>
+</html>
